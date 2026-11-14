@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Interval Timer</title>
+<meta name="description" content="A timer that tells you how much time is left at regular intervals — not just when it's over.">
+<meta name="theme-color" content="#0f1115">
+<style>
+  :root{
+    --bg:#0f1115; --panel:#181b22; --line:#2a2f3a; --text:#e8eaf0; --muted:#8b93a7;
+    --accent:#5eead4; --done:#f87171;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg); color:var(--text); min-height:100vh;
+    display:flex; justify-content:center;
+    padding:24px 16px calc(24px + env(safe-area-inset-bottom));
+    -webkit-tap-highlight-color:transparent;
+  }
+  main{width:100%; max-width:440px}
+  h1{font-size:1.15rem; font-weight:650; margin:0 0 4px}
+  .sub{color:var(--muted); font-size:.9rem; margin:0 0 20px}
+  .hidden{display:none !important}
+  .note{background:#3a2e12; border:1px solid #6b5418; color:#fde68a; border-radius:12px; padding:10px 12px; font-size:.9rem; line-height:1.4; margin:0 0 14px}
+
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:16px; margin-bottom:14px}
+  .h{display:block; font-size:.72rem; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); margin-bottom:10px}
+
+  input[type=number]{
+    background:var(--bg); border:1px solid var(--line); color:var(--text);
+    border-radius:10px; padding:12px 8px; font-size:1.3rem; text-align:center;
+    font-variant-numeric:tabular-nums; width:100%; font-family:inherit;
+  }
+  input[type=number]:focus{outline:2px solid var(--accent); outline-offset:1px}
+  .time-in{display:flex; gap:8px}
+  .time-in > div{flex:1}
+  .unit{display:block; text-align:center; font-size:.75rem; color:var(--muted); margin-top:4px}
+
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:14px}
+  .chip{
+    background:transparent; border:1px solid var(--line); color:var(--text);
+    border-radius:999px; padding:7px 12px; font:inherit; font-size:.85rem; cursor:pointer;
+  }
+  .chip:hover{border-color:var(--muted)}
+
+  .seg{display:flex; background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:3px; margin-bottom:12px}
+  .seg button{flex:1; background:none; border:0; color:var(--muted); padding:9px; border-radius:8px; font:inherit; font-size:.95rem; cursor:pointer}
+  .seg button.on{background:var(--line); color:var(--text)}
+  .row{display:flex; align-items:center; gap:10px; font-size:1rem}
+  .row input{width:96px}
+  .preview{font-size:.85rem; color:var(--muted); margin:12px 0 0; line-height:1.45}
+
+  .sw{display:flex; justify-content:space-between; align-items:center; padding:9px 0; font-size:.95rem; cursor:pointer}
+  .sw + .sw{border-top:1px solid var(--line)}
+  .sw input{
+    appearance:none; -webkit-appearance:none; flex:none; cursor:pointer;
+    width:42px; height:24px; border-radius:999px; background:var(--line);
+    position:relative; transition:background .2s; margin:0;
+  }
+  .sw input::after{
+    content:""; position:absolute; top:3px; left:3px; width:18px; height:18px;
+    border-radius:50%; background:#fff; transition:transform .2s;
+  }
+  .sw input:checked{background:var(--accent)}
+  .sw input:checked::after{transform:translateX(18px)}
+
+  .btn{
+    width:100%; padding:15px; border-radius:14px; border:1px solid var(--line);
+    background:var(--panel); color:var(--text); font:inherit; font-size:1.05rem; font-weight:600; cursor:pointer;
+  }
+  .btn.primary{background:var(--accent); color:#06231f; border-color:var(--accent)}
+  .btn:active{transform:scale(.98)}
+  .link{display:block; margin:12px auto 0; background:none; border:0; color:var(--muted); font:inherit; font-size:.9rem; text-decoration:underline; cursor:pointer}
+
+  /* Running view */
+  .ring-wrap{position:relative; width:min(78vw,320px); aspect-ratio:1; margin:10px auto 0}
+  .ring{width:100%; height:100%; display:block}
+  .track{fill:none; stroke:var(--line); stroke-width:8}
+  .bar{
+    fill:none; stroke:var(--accent); stroke-width:8; stroke-linecap:round;
+    stroke-dasharray:565.49; transition:stroke-dashoffset .25s linear, stroke .3s;
+  }
+  #ticks line{stroke:var(--text); stroke-width:2.5; stroke-linecap:round; opacity:.85}
+  #ticks line.passed{opacity:.2}
+  .center{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center}
+  .clock{font-size:clamp(2.6rem,14vw,4.2rem); font-weight:650; font-variant-numeric:tabular-nums; letter-spacing:-.02em}
+  .status{color:var(--muted); font-size:.95rem; margin-top:2px}
+  .next{text-align:center; color:var(--muted); min-height:1.4em; margin:16px 0 18px; font-size:.95rem}
+  .controls{display:flex; gap:10px}
+  .log{list-style:none; padding:0; margin:22px 0 0; font-size:.9rem}
+  .log li{display:flex; justify-content:space-between; padding:9px 2px; border-top:1px solid var(--line)}
+  .log li span:last-child{color:var(--muted)}
+
+  body.done .bar{stroke:var(--done)}
+  body.done .clock{color:var(--done)}
+  .pulse{animation:pulse .7s ease-out}
+  @keyframes pulse{
+    0%{transform:scale(1); filter:drop-shadow(0 0 0 transparent)}
+    30%{transform:scale(1.04); filter:drop-shadow(0 0 18px var(--accent))}
+    100%{transform:scale(1); filter:drop-shadow(0 0 0 transparent)}
+  }
+  @media (prefers-reduced-motion: reduce){ .pulse{animation:none} .bar{transition:none} }
+</style>
+</head>
+<body>
+<main>
+  <h1>Interval Timer</h1>
+  <p class="sub">Hear how much time is left along the way, not just when it's over.</p>
+  <p class="note hidden" id="voiceNote" role="alert"></p>
+
+  <!-- SETUP -->
+  <section id="setup">
+    <div class="card">
+      <span class="h">Total time</span>
+      <div class="time-in">
+        <div><input type="number" id="hh" min="0" max="23" inputmode="numeric" value="0" aria-label="Hours"><span class="unit">hours</span></div>
+        <div><input type="number" id="mm" min="0" max="59" inputmode="numeric" value="25" aria-label="Minutes"><span class="unit">min</span></div>
+        <div><input type="number" id="ss" min="0" max="59" inputmode="numeric" value="0" aria-label="Seconds"><span class="unit">sec</span></div>
+      </div>
+      <div class="chips" id="presets">
+        <button class="chip" data-h="0" data-m="10" data-every="1">10 min · every 1</button>
+        <button class="chip" data-h="0" data-m="25" data-every="5">25 min · every 5</button>
+        <button class="chip" data-h="0" data-m="45" data-every="15">45 min · every 15</button>
+        <button class="chip" data-h="1" data-m="0" data-every="15">1 hr · every 15</button>
+        <button class="chip" data-h="2" data-m="0" data-every="30">2 hr · every 30</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="h">Tell me the time left</span>
+      <div class="seg">
+        <button data-mode="every" class="on">Every few minutes</button>
+        <button data-mode="split">Split into parts</button>
+      </div>
+      <div class="row" id="everyRow">Every <input type="number" id="every" min="0.5" step="0.5" inputmode="decimal" value="5" aria-label="Interval in minutes"> minutes</div>
+      <div class="row hidden" id="splitRow">Split into <input type="number" id="parts" min="2" max="60" inputmode="numeric" value="4" aria-label="Number of parts"> equal parts</div>
+      <p class="preview" id="preview"></p>
+    </div>
+
+    <div class="card">
+      <span class="h">Feedback</span>
+      <label class="sw"><span>Speak the time left</span><input type="checkbox" id="optVoice" checked></label>
+      <label class="sw"><span>Chime at each update</span><input type="checkbox" id="optChime" checked></label>
+      <label class="sw"><span>Vibrate (phones)</span><input type="checkbox" id="optVibrate" checked></label>
+      <label class="sw"><span>Beep the last 5 seconds</span><input type="checkbox" id="optCount" checked></label>
+      <label class="sw"><span>Notify when in another tab</span><input type="checkbox" id="optNotify"></label>
+      <label class="sw"><span>Keep screen awake</span><input type="checkbox" id="optWake" checked></label>
+    </div>
+
+    <button class="btn primary" id="startBtn">Start</button>
+    <button class="link" id="testBtn">Test sound &amp; voice</button>
+  </section>
+
+  <!-- RUNNING -->
+  <section id="run" class="hidden">
+    <div class="ring-wrap" id="ringWrap">
+      <svg class="ring" viewBox="0 0 200 200" aria-hidden="true">
+        <g transform="rotate(-90 100 100)">
+          <circle class="track" cx="100" cy="100" r="90"/>
+          <circle class="bar" id="bar" cx="100" cy="100" r="90"/>
+          <g id="ticks"></g>
+        </g>
+      </svg>
+      <div class="center">
+        <div class="clock" id="clock" aria-live="off">0:00</div>
+        <div class="status" id="status">left</div>
+      </div>
+    </div>
+    <p class="next" id="next"></p>
+    <div class="controls">
+      <button class="btn" id="resetBtn">Reset</button>
+      <button class="btn primary" id="pauseBtn">Pause</button>
+    </div>
+    <ol class="log" id="log" aria-live="polite"></ol>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const CIRC = 2 * Math.PI * 90;
+  const STORE = 'intervalTimer.v1';
+  const OPTS = { voice:'optVoice', chime:'optChime', vibrate:'optVibrate', count:'optCount', notify:'optNotify', wake:'optWake' };
+
+  let mode = 'every';
+  let run = null;        // active timer state
+  let audio = null;      // AudioContext
+  let wakeLock = null;
+
+  /* ---------- Ticker (Web Worker keeps time in background tabs) ---------- */
+  let worker = null, fallbackId = null;
+  try {
+    const src = 'let i;onmessage=e=>{clearInterval(i);if(e.data)i=setInterval(()=>postMessage(1),200)}';
+    worker = new Worker(URL.createObjectURL(new Blob([src], { type:'text/javascript' })));
+    worker.onmessage = tick;
+  } catch { worker = null; }
+  const startTicker = () => worker ? worker.postMessage(1) : (fallbackId = setInterval(tick, 200));
+  const stopTicker  = () => { if (worker) worker.postMessage(0); clearInterval(fallbackId); };
+
+  /* ---------- Formatting ---------- */
+  const pad = n => String(n).padStart(2, '0');
+  function fmtClock(ms) {
+    let s = Math.ceil(ms / 1000);
+    const h = Math.floor(s / 3600); s %= 3600;
+    const m = Math.floor(s / 60);   s %= 60;
+    return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+  }
+  function split(ms) {
+    let s = Math.round(ms / 1000);
+    const h = Math.floor(s / 3600); s %= 3600;
+    const m = Math.floor(s / 60);   s %= 60;
+    return { h, m, s };
+  }
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  function words(ms) { // for speech: "1 hour 15 minutes"
+    const { h, m, s } = split(ms), out = [];
+    if (h) out.push(plural(h, 'hour'));
+    if (m) out.push(plural(m, 'minute'));
+    if (s) out.push(plural(s, 'second'));
+    return out.join(' ') || '0 seconds';
+  }
+  function short(ms) { // for UI: "1 h 15 min"
+    const { h, m, s } = split(ms), out = [];
+    if (h) out.push(`${h} h`);
+    if (m) out.push(`${m} min`);
+    if (s) out.push(`${s} s`);
+    return out.join(' ') || '0 s';
+  }
+
+  /* ---------- Settings ---------- */
+  const num = id => { const v = parseFloat($(id).value); return isFinite(v) && v > 0 ? v : 0; };
+  function settings() {
+    const s = {
+      total: Math.round((num('hh') * 3600 + num('mm') * 60 + num('ss')) * 1000),
+      mode,
+      everyMs: Math.round(num('every') * 60000),
+      parts: Math.floor(num('parts')),
+    };
+    for (const [k, id] of Object.entries(OPTS)) s[k] = $(id).checked;
+    return s;
+  }
+  function save() {
+    try {
+      const d = { mode };
+      ['hh','mm','ss','every','parts'].forEach(k => d[k] = $(k).value);
+      Object.values(OPTS).forEach(id => d[id] = $(id).checked);
+      localStorage.setItem(STORE, JSON.stringify(d));
+    } catch {}
+  }
+  function load() {
+    try {
+      const d = JSON.parse(localStorage.getItem(STORE));
+      if (!d) return;
+      ['hh','mm','ss','every','parts'].forEach(k => { if (d[k] != null) $(k).value = d[k]; });
+      Object.values(OPTS).forEach(id => { if (id in d) $(id).checked = d[id]; });
+      if (d.mode) setMode(d.mode);
+    } catch {}
+  }
+
+  /* Checkpoints = "time left" values (ms) at which to announce, sorted high → low */
+  function computeMarks(s) {
+    const out = [];
+    if (s.mode === 'every' && s.everyMs > 0) {
+      for (let k = 1; ; k++) {
+        const t = s.total - k * s.everyMs;
+        if (t < 1000) break;
+        out.push(t);
+      }
+    } else if (s.mode === 'split' && s.parts >= 2) {
+      for (let k = 1; k < s.parts; k++) out.push(s.total * (s.parts - k) / s.parts);
+    }
+    return [...new Set(out.map(t => Math.round(t / 1000) * 1000))]
+      .filter(t => t > 0 && t < s.total)
+      .sort((a, b) => b - a);
+  }
+
+  function updatePreview() {
+    const s = settings(), p = $('preview');
+    if (!s.total) { p.textContent = 'Set a total time to start.'; return; }
+    const marks = computeMarks(s);
+    if (!marks.length) {
+      p.textContent = 'No updates with this setting. The interval is as long as the timer, so you’ll only get the final alarm.';
+      return;
+    }
+    const shown = marks.slice(0, 8).map(short).join(', ');
+    const more = marks.length > 8 ? `, … (${marks.length} updates in all)` : '';
+    p.textContent = `You’ll hear: ${shown}${more} left, then the final alarm.`;
+  }
+
+  function setMode(m) {
+    mode = m === 'split' ? 'split' : 'every';
+    document.querySelectorAll('.seg button').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+    $('everyRow').classList.toggle('hidden', mode !== 'every');
+    $('splitRow').classList.toggle('hidden', mode !== 'split');
+    updatePreview();
+  }
+
+  /* ---------- Sound, voice, vibration, notifications ---------- */
+  function ensureAudio() {
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === 'suspended') audio.resume();
+    } catch {}
+  }
+  function tone(freq, at, dur, vol = 0.25) {
+    if (!audio) return;
+    const t0 = audio.currentTime + at;
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = 'sine'; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(audio.destination);
+    o.start(t0); o.stop(t0 + dur + 0.05);
+  }
+  const chime = () => { tone(660, 0, 0.4); tone(880, 0.18, 0.55); };
+  const beep  = () => tone(1000, 0, 0.12, 0.3);
+  const alarm = () => { for (let i = 0; i < 6; i++) { tone(880, i * 0.5, 0.2, 0.35); tone(1175, i * 0.5 + 0.22, 0.2, 0.35); } };
+
+  /* Voice: pick a real voice for the user's language (voices load async on some phones) */
+  const hasSpeech = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+  let voice = null;
+  function pickVoice() {
+    try {
+      const vs = speechSynthesis.getVoices();
+      if (!vs.length) return;
+      const lang = (navigator.language || 'en-US').toLowerCase();
+      const base = lang.slice(0, 2);
+      voice = vs.find(v => v.lang.toLowerCase().replace('_', '-') === lang && v.localService)
+           || vs.find(v => v.lang.toLowerCase().replace('_', '-') === lang)
+           || vs.find(v => v.lang.toLowerCase().startsWith(base) && v.default)
+           || vs.find(v => v.lang.toLowerCase().startsWith(base))
+           || vs.find(v => v.default) || vs[0];
+    } catch {}
+  }
+  if (hasSpeech) {
+    pickVoice();
+    try { speechSynthesis.addEventListener('voiceschanged', pickVoice); } catch { speechSynthesis.onvoiceschanged = pickVoice; }
+  }
+  function voiceIssue(msg) {
+    const el = $('voiceNote');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+  function speak(text) {
+    if (!hasSpeech) {
+      voiceIssue('This browser can’t speak. Open the page in Safari (iPhone) or Chrome (Android) to hear the time called out.');
+      return;
+    }
+    try {
+      if (!voice) pickVoice();
+      const u = new SpeechSynthesisUtterance(text);
+      if (voice) u.voice = voice;
+      u.lang = (voice && voice.lang) || navigator.language || 'en-US';
+      u.rate = 1; u.volume = 1; u.pitch = 1;
+      u.onerror = e => {
+        if (e.error === 'interrupted' || e.error === 'canceled') return;
+        voiceIssue(`The voice didn’t play (${e.error}). Tap “Test sound & voice”, and check that your phone isn’t on silent.`);
+      };
+      // Calling cancel() right before speak() makes Safari/Chrome drop the new line,
+      // so only cancel when something is actually queued, then speak a moment later.
+      if (speechSynthesis.speaking || speechSynthesis.pending) {
+        speechSynthesis.cancel();
+        setTimeout(() => { speechSynthesis.speak(u); speechSynthesis.resume(); }, 120);
+      } else {
+        speechSynthesis.speak(u);
+        speechSynthesis.resume(); // Chrome sometimes leaves the queue paused
+      }
+    } catch {
+      voiceIssue('The voice didn’t play. Try opening the page in Safari or Chrome.');
+    }
+  }
+  const vibrate = pattern => { try { navigator.vibrate && navigator.vibrate(pattern); } catch {} };
+  function notify(text) {
+    if (!run || !run.s.notify || !document.hidden) return;
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    try { new Notification('Interval Timer', { body: text, tag: 'interval-timer' }); } catch {}
+  }
+  function pulse() {
+    const el = $('ringWrap');
+    el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse');
+  }
+
+  async function requestWake() {
+    try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch {}
+  }
+  function releaseWake() { try { wakeLock && wakeLock.release(); } catch {} wakeLock = null; }
+
+  /* ---------- Timer ---------- */
+  function start() {
+    const s = settings();
+    if (!s.total) { updatePreview(); $('mm').focus(); return; }
+    save();
+    ensureAudio();
+
+    run = {
+      s, total: s.total, endAt: Date.now() + s.total,
+      marks: computeMarks(s), done: new Set(), beeped: new Set(),
+      paused: false, pausedRem: 0, finished: false,
+    };
+
+    if (s.notify && 'Notification' in window && Notification.permission === 'default') {
+      try { Notification.requestPermission(); } catch {}
+    }
+    if (s.wake) requestWake();
+    // Speaking once inside the tap also unlocks speech on iOS for later announcements.
+    if (s.voice) speak(`Timer started. ${words(s.total)}.`);
+
+    document.body.classList.remove('done');
+    $('log').innerHTML = '';
+    $('status').textContent = 'left';
+    $('pauseBtn').textContent = 'Pause';
+    drawTicks();
+    $('setup').classList.add('hidden');
+    $('run').classList.remove('hidden');
+    startTicker();
+    tick();
+  }
+
+  function tick() {
+    if (!run || run.paused || run.finished) return;
+    const rem = Math.max(0, run.endAt - Date.now());
+    render(rem);
+
+    // Checkpoint announcements (if several were missed, e.g. phone asleep, announce once)
+    const due = run.marks.filter(m => rem <= m && !run.done.has(m));
+    if (due.length) {
+      due.forEach(m => run.done.add(m));
+      const m = Math.min(...due);
+      announce(m - rem < 3000 ? m : rem);
+    }
+
+    // Final 5-second beeps
+    if (run.s.count && rem > 0 && rem <= 5000) {
+      const sec = Math.ceil(rem / 1000);
+      if (!run.beeped.has(sec)) { run.beeped.add(sec); beep(); }
+    }
+
+    if (rem <= 0) finish();
+  }
+
+  function render(rem) {
+    $('clock').textContent = fmtClock(rem);
+    $('bar').style.strokeDashoffset = CIRC * (1 - rem / run.total);
+    document.title = `${fmtClock(rem)} left · Interval Timer`;
+
+    const next = run.marks.find(m => m < rem && !run.done.has(m));
+    $('next').textContent = next != null
+      ? `Next update in ${fmtClock(rem - next)} (at ${short(next)} left)`
+      : rem > 0 ? 'No more updates. Final alarm next.' : '';
+
+    document.querySelectorAll('#ticks line').forEach(l => l.classList.toggle('passed', rem <= +l.dataset.ms));
+  }
+
+  function drawTicks() {
+    const g = $('ticks');
+    g.innerHTML = '';
+    if (run.marks.length > 120) return; // too many to draw clearly
+    run.marks.forEach(m => {
+      const a = (m / run.total) * 2 * Math.PI; // aligns with the bar's edge when m is left
+      const l = document.createElementNS(SVG_NS, 'line');
+      l.setAttribute('x1', 100 + 80 * Math.cos(a)); l.setAttribute('y1', 100 + 80 * Math.sin(a));
+      l.setAttribute('x2', 100 + 99 * Math.cos(a)); l.setAttribute('y2', 100 + 99 * Math.sin(a));
+      l.dataset.ms = m;
+      g.appendChild(l);
+    });
+  }
+
+  function addLog(text) {
+    const li = document.createElement('li');
+    const when = new Date().toLocaleTimeString([], { hour:'numeric', minute:'2-digit' });
+    li.innerHTML = `<span></span><span>${when}</span>`;
+    li.firstChild.textContent = text;
+    $('log').prepend(li);
+  }
+
+  function announce(ms) {
+    const s = run.s, text = `${words(ms)} left`;
+    if (s.chime) chime();
+    if (s.vibrate) vibrate([200, 100, 200]);
+    if (s.voice) setTimeout(() => speak(text), s.chime ? 550 : 0);
+    notify(text);
+    pulse();
+    addLog(`${short(ms)} left`);
+  }
+
+  function finish() {
+    run.finished = true;
+    stopTicker();
+    render(0);
+    $('bar').style.strokeDashoffset = 0;
+    $('status').textContent = 'Time’s up';
+    $('next').textContent = '';
+    $('pauseBtn').textContent = 'Restart';
+    document.title = 'Time’s up · Interval Timer';
+    document.body.classList.add('done');
+    alarm();
+    if (run.s.vibrate) vibrate([500, 200, 500, 200, 500]);
+    if (run.s.voice) setTimeout(() => speak('Time’s up.'), 3000);
+    notify('Time’s up!');
+    pulse();
+    addLog('Time’s up');
+    releaseWake();
+  }
+
+  function togglePause() {
+    if (!run) return;
+    if (run.finished) { start(); return; }
+    if (run.paused) {
+      ensureAudio();
+      run.endAt = Date.now() + run.pausedRem;
+      run.paused = false;
+      $('pauseBtn').textContent = 'Pause';
+      $('status').textContent = 'left';
+      if (run.s.wake) requestWake();
+      startTicker();
+      tick();
+    } else {
+      run.pausedRem = Math.max(0, run.endAt - Date.now());
+      run.paused = true;
+      stopTicker();
+      $('pauseBtn').textContent = 'Resume';
+      $('status').textContent = 'paused';
+      $('next').textContent = '';
+      releaseWake();
+    }
+  }
+
+  function reset() {
+    stopTicker();
+    run = null;
+    try { speechSynthesis.cancel(); } catch {}
+    releaseWake();
+    document.body.classList.remove('done');
+    document.title = 'Interval Timer';
+    $('run').classList.add('hidden');
+    $('setup').classList.remove('hidden');
+    updatePreview();
+  }
+
+  /* ---------- Wire up ---------- */
+  document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { setMode(b.dataset.mode); save(); }));
+  $('presets').addEventListener('click', e => {
+    const c = e.target.closest('.chip'); if (!c) return;
+    $('hh').value = c.dataset.h; $('mm').value = c.dataset.m; $('ss').value = 0;
+    $('every').value = c.dataset.every;
+    setMode('every'); save();
+  });
+  ['hh','mm','ss','every','parts'].forEach(id => $(id).addEventListener('input', () => { updatePreview(); save(); }));
+  Object.values(OPTS).forEach(id => $(id).addEventListener('change', save));
+
+  $('startBtn').addEventListener('click', start);
+  $('pauseBtn').addEventListener('click', togglePause);
+  $('resetBtn').addEventListener('click', reset);
+  $('testBtn').addEventListener('click', () => {
+    // Speak right inside the tap: iPhones block speech that starts later from a timer.
+    speak('10 minutes left');
+    ensureAudio(); chime(); vibrate([200, 100, 200]);
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space' && run && !/INPUT|BUTTON/.test(e.target.tagName)) { e.preventDefault(); togglePause(); }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && run && !run.paused && !run.finished) {
+      if (run.s.wake) requestWake();
+      tick();
+    }
+  });
+
+  load();
+  updatePreview();
+})();
+</script>
+</body>
+</html>

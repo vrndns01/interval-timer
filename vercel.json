@@ -1,0 +1,3 @@
+{
+  "rewrites": [{ "source": "/", "destination": "/Interval_timer.html" }]
+}
